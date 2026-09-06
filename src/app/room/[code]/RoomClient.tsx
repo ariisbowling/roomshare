@@ -11,6 +11,7 @@ import {
   useIsMuted,
   useIsSpeaking,
   useLocalParticipant,
+  useMediaDeviceSelect,
   useParticipants,
   useRoomContext,
   useTrackToggle,
@@ -29,6 +30,7 @@ import {
   MonitorX,
   PhoneOff,
   Send,
+  Settings,
   Users,
   Video,
   VideoOff,
@@ -390,6 +392,7 @@ function Controls({ panel, setPanel }: { panel: "none" | "chat" | "people"; setP
           <Users size={18} />
         </Ctl>
         <FullscreenControl />
+        <DevicesControl />
         <Divider />
         <button
           className="h-10 px-3 rounded-xl bg-red-500/90 hover:bg-red-500 text-white flex items-center gap-1.5 text-sm transition"
@@ -534,6 +537,52 @@ function ShareControl() {
         </div>
       )}
     </div>
+  );
+}
+
+function DevicesControl() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+
+  return (
+    <div ref={ref} className="relative">
+      <Ctl on={open} onClick={() => setOpen((o) => !o)} title="Audio devices">
+        <Settings size={18} />
+      </Ctl>
+      {open && (
+        <div className="absolute bottom-12 right-0 w-72 rounded-xl bg-[#17171a] border border-white/10 shadow-2xl py-1 z-30">
+          <DeviceSelect label="Microphone" kind="audioinput" />
+          <DeviceSelect label="Speaker" kind="audiooutput" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeviceSelect({ label, kind }: { label: string; kind: "audioinput" | "audiooutput" }) {
+  const d = useMediaDeviceSelect({ kind });
+  return (
+    <label className="block px-3 py-2">
+      <span className="block text-[11px] uppercase tracking-wider text-neutral-500 mb-1">{label}</span>
+      <select
+        className="w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5 text-sm outline-none focus:border-blue-500"
+        value={d.activeDeviceId}
+        onChange={(e) => d.setActiveMediaDevice(e.target.value)}
+      >
+        {d.devices.map((dev) => (
+          <option key={dev.deviceId} value={dev.deviceId}>
+            {dev.label || dev.deviceId.slice(0, 8)}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
