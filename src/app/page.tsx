@@ -16,12 +16,13 @@ export default function Home() {
 
   useEffect(() => {
     // Browser-only state, read once after mount to avoid a hydration mismatch.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    /* eslint-disable react-hooks/set-state-in-effect */
     try {
       setName(localStorage.getItem("rs:name") ?? "");
     } catch {}
     const c = new URLSearchParams(location.search).get("code");
     if (c) setCode(c.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6));
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   function go(c: string) {
