@@ -1,9 +1,39 @@
 @import "tailwindcss";
 
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-instrument), Georgia, serif;
+
+  --color-bg: #0c0b0a;
+  --color-ink: #efe9e0;
+  --color-mute: #8a847a;
+  --color-dim: #56514a;
+  --color-line: rgba(239, 233, 224, 0.08);
+  --color-surface: rgba(239, 233, 224, 0.04);
+  --color-accent: #f0b35b;
+  --color-warn: #e0654f;
+}
+
 html,
 body {
-  background: #0b0b0d;
-  color: #e5e5e5;
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
   overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: rgba(240, 179, 91, 0.35);
+}
+
+input[type="range"] {
+  accent-color: var(--color-accent);
+}
+
+/* the shared video should never show a focus ring or be draggable */
+video {
+  outline: none;
+  -webkit-user-drag: none;
 }

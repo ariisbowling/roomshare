@@ -40,6 +40,7 @@ import {
   Volume2,
   X,
 } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { SFX, playSfx, type SfxId } from "@/lib/sfx";
@@ -129,7 +130,7 @@ export default function RoomClient({ code }: { code: string }) {
       audio
       video={camOnJoin}
       onDisconnected={() => router.push("/")}
-      className="h-dvh flex flex-col bg-[#0b0b0d] text-neutral-200 select-none"
+      className="h-dvh flex flex-col bg-bg text-ink select-none"
     >
       <VolumeProvider>
         <Shell code={code} />
@@ -171,8 +172,8 @@ function Shell({ code }: { code: string }) {
     <>
       <header className="h-12 shrink-0 flex items-center justify-between px-3 sm:px-4">
         <CodePill code={code} />
-        <div className="flex items-center gap-1.5 text-xs text-neutral-500">
-          <span className={`inline-block w-1.5 h-1.5 rounded-full ${state === ConnectionState.Connected ? "bg-emerald-400" : "bg-amber-400 animate-pulse"}`} />
+        <div className="flex items-center gap-1.5 text-xs text-mute">
+          <span className={`inline-block w-1.5 h-1.5 rounded-full ${state === ConnectionState.Connected ? "bg-accent" : "bg-amber-400 animate-pulse"}`} />
           {state === ConnectionState.Connected ? `${participants.length} here` : state}
         </div>
       </header>
@@ -195,7 +196,7 @@ function CodePill({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
-      className="group flex items-center gap-2 rounded-full bg-white/5 hover:bg-white/10 pl-3 pr-2 py-1 transition"
+      className="group flex items-center gap-2 rounded-full hover:bg-surface pl-3 pr-2 py-1 transition"
       title="Copy invite link"
       onClick={() => {
         navigator.clipboard?.writeText(`${location.origin}/?code=${code}`).catch(() => {});
@@ -203,8 +204,8 @@ function CodePill({ code }: { code: string }) {
         setTimeout(() => setCopied(false), 1500);
       }}
     >
-      <span className="font-mono text-sm tracking-[0.25em] text-neutral-300">{code}</span>
-      {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} className="text-neutral-500 group-hover:text-neutral-300" />}
+      <span className="font-mono text-sm tracking-[0.25em] text-ink/80">{code}</span>
+      {copied ? <Check size={14} className="text-accent" /> : <Copy size={14} className="text-mute group-hover:text-ink/80" />}
     </button>
   );
 }
@@ -222,7 +223,7 @@ function Stage({ theater }: { theater: boolean }) {
       <div className={`h-full w-full relative overflow-hidden bg-black ${theater ? "" : "rounded-xl"}`}>
         <VideoTrack trackRef={screen} className="h-full w-full object-contain" />
         {!theater && (
-          <div className="absolute top-2 left-2 text-xs px-2 py-1 rounded-md bg-black/50 backdrop-blur text-neutral-300">
+          <div className="absolute top-2 left-2 text-xs px-2 py-1 rounded-md bg-black/50 backdrop-blur text-ink/80">
             {screen.participant.name || screen.participant.identity}
             {screen.participant.isLocal ? " (you)" : ""}
           </div>
@@ -252,7 +253,7 @@ function Stage({ theater }: { theater: boolean }) {
         {participants
           .filter((p) => !camRefs.some((t) => t.participant.identity === p.identity))
           .map((p) => (
-            <div key={p.identity} className="aspect-video rounded-xl bg-white/[0.03] flex items-center justify-center">
+            <div key={p.identity} className="aspect-video rounded-xl bg-surface flex items-center justify-center">
               <VoiceAvatar participant={p} size={72} />
             </div>
           ))}
@@ -262,9 +263,20 @@ function Stage({ theater }: { theater: boolean }) {
 
   return (
     <div className="h-full w-full flex flex-wrap items-center justify-center gap-10 sm:gap-14">
-      {participants.map((p) => (
-        <VoiceAvatar key={p.identity} participant={p} size={96} />
-      ))}
+      <AnimatePresence mode="popLayout">
+        {participants.map((p) => (
+          <motion.div
+            key={p.identity}
+            layout
+            initial={{ opacity: 0, scale: 0.7 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.7 }}
+            transition={{ type: "spring", stiffness: 380, damping: 28 }}
+          >
+            <VoiceAvatar participant={p} size={96} />
+          </motion.div>
+        ))}
+      </AnimatePresence>
     </div>
   );
 }
@@ -274,10 +286,10 @@ function CamTile({ trackRef, compact }: { trackRef: TrackReference; compact?: bo
   const speaking = useIsSpeaking(p);
   const muted = useIsMuted({ participant: p, source: Track.Source.Microphone });
   return (
-    <div className={`relative h-full w-full bg-black ring-2 transition ${speaking ? "ring-emerald-400" : "ring-transparent"}`}>
+    <div className={`relative h-full w-full bg-black ring-2 transition ${speaking ? "ring-accent" : "ring-transparent"}`}>
       <VideoTrack trackRef={trackRef} className="h-full w-full object-cover" style={p.isLocal ? { transform: "scaleX(-1)" } : undefined} />
-      <div className={`absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-md bg-black/50 backdrop-blur text-neutral-200 ${compact ? "text-[10px] px-1.5 py-0.5" : "text-xs px-2 py-1"}`}>
-        {muted && <MicOff size={compact ? 10 : 12} className="text-red-400" />}
+      <div className={`absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-md bg-black/50 backdrop-blur text-ink ${compact ? "text-[10px] px-1.5 py-0.5" : "text-xs px-2 py-1"}`}>
+        {muted && <MicOff size={compact ? 10 : 12} className="text-warn" />}
         {p.name || p.identity}
         {p.isLocal ? " (you)" : ""}
       </div>
@@ -291,20 +303,31 @@ function VoiceAvatar({ participant: p, size }: { participant: Participant; size:
   const label = p.name || p.identity;
   return (
     <div className="flex flex-col items-center gap-3">
+      <div className="relative" style={{ width: size, height: size }}>
+        <AnimatePresence>
+          {speaking && (
+            <motion.span
+              className="absolute inset-0 rounded-full border-2 border-accent"
+              initial={{ opacity: 0, scale: 1 }}
+              animate={{ opacity: [0.9, 0.35, 0.9], scale: [1.08, 1.16, 1.08] }}
+              exit={{ opacity: 0, scale: 1 }}
+              transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+            />
+          )}
+        </AnimatePresence>
       <div
-        className={`relative rounded-full flex items-center justify-center font-medium text-white transition-all duration-150 ${
-          speaking ? "ring-4 ring-emerald-400 ring-offset-4 ring-offset-[#0b0b0d]" : "ring-0"
-        }`}
-        style={{ width: size, height: size, background: hue(label), fontSize: size * 0.38 }}
+        className="relative rounded-full flex items-center justify-center font-display text-ink"
+        style={{ width: size, height: size, background: hue(label), fontSize: size * 0.46 }}
       >
-        {label.slice(0, 1).toUpperCase()}
+        {label.slice(0, 1).toLowerCase()}
         {muted && (
-          <span className="absolute -bottom-1 -right-1 rounded-full bg-[#0b0b0d] p-1.5">
-            <MicOff size={14} className="text-red-400" />
+          <span className="absolute -bottom-1 -right-1 rounded-full bg-bg p-1.5">
+            <MicOff size={14} className="text-warn" />
           </span>
         )}
       </div>
-      <span className="text-sm text-neutral-400">
+      </div>
+      <span className="text-sm text-mute">
         {label}
         {p.isLocal ? " (you)" : ""}
       </span>
@@ -315,7 +338,7 @@ function VoiceAvatar({ participant: p, size }: { participant: Participant; size:
 function hue(s: string) {
   let h = 0;
   for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360;
-  return `hsl(${h} 45% 40%)`;
+  return `hsl(${h} 28% 32%)`;
 }
 
 // ---- theater overlay: auto-hides until the mouse moves ----------------------
@@ -344,18 +367,20 @@ function TheaterOverlay({ onExit }: { onExit: () => void }) {
   }, []);
 
   return (
-    <div
-      className={`absolute inset-0 transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0 cursor-none"}`}
+    <motion.div
+      animate={{ opacity: visible ? 1 : 0 }}
+      transition={{ duration: 0.35 }}
+      className={`absolute inset-0 ${visible ? "" : "cursor-none"}`}
       onDoubleClick={(e) => e.stopPropagation()}
     >
       <div className="absolute top-3 right-3 flex items-center gap-2" onDoubleClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-3 rounded-2xl bg-black/60 backdrop-blur border border-white/10 px-3 py-2">
+        <div className="flex items-center gap-3 rounded-2xl bg-black/55 backdrop-blur-md border border-white/10 px-3 py-2">
           <Slider label="Movie" value={v.movie} onChange={(x) => set({ movie: x })} />
           <Slider label="Voice" value={v.voice} onChange={(x) => set({ voice: x })} />
         </div>
         <button
-          className={`h-11 w-11 rounded-2xl backdrop-blur border border-white/10 flex items-center justify-center transition ${
-            mic.enabled ? (speaking ? "bg-emerald-500/80 text-white" : "bg-black/60 text-white") : "bg-red-500/80 text-white"
+          className={`h-11 w-11 rounded-2xl backdrop-blur border border-line flex items-center justify-center transition ${
+            mic.enabled ? (speaking ? "bg-accent/90 text-white" : "bg-black/60 text-white") : "bg-warn/90 text-white"
           }`}
           onClick={() => mic.toggle()}
           disabled={mic.pending}
@@ -363,36 +388,49 @@ function TheaterOverlay({ onExit }: { onExit: () => void }) {
         >
           {mic.enabled ? <Mic size={20} /> : <MicOff size={20} />}
         </button>
-        <button className="h-11 w-11 rounded-2xl bg-black/60 backdrop-blur border border-white/10 flex items-center justify-center text-white" onClick={onExit} title="Exit fullscreen (Esc)">
+        <button className="h-11 w-11 rounded-2xl bg-black/55 backdrop-blur-md border border-white/10 flex items-center justify-center text-white" onClick={onExit} title="Exit fullscreen (Esc)">
           <Minimize2 size={20} />
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 function Slider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
   return (
-    <label className="flex items-center gap-2 text-xs text-neutral-300">
+    <label className="flex items-center gap-2 text-xs text-ink/80">
       <span className="w-10">{label}</span>
-      <input type="range" min={0} max={1} step={0.02} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-24 accent-blue-500" />
+      <input type="range" min={0} max={1} step={0.02} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-24 " />
     </label>
   );
 }
 
 // ---- side panel -------------------------------------------------------------
 function SidePanel({ panel, onClose }: { panel: Panel; onClose: () => void }) {
-  if (panel === "none") return null;
   return (
-    <aside className="absolute inset-0 sm:static sm:w-80 shrink-0 flex flex-col bg-[#0b0b0d] sm:bg-transparent sm:border-l border-white/[0.06] z-20">
-      <div className="h-10 flex items-center justify-between px-4 text-xs uppercase tracking-wider text-neutral-500">
+    <AnimatePresence initial={false}>
+      {panel !== "none" && (
+    <motion.aside
+      key="side"
+      initial={{ width: 0, opacity: 0 }}
+      animate={{ width: "var(--side-w)", opacity: 1 }}
+      exit={{ width: 0, opacity: 0 }}
+      transition={{ type: "spring", stiffness: 300, damping: 32 }}
+      style={{ ["--side-w" as string]: "20rem" }}
+      className="absolute inset-0 sm:static sm:!w-[var(--side-w)] shrink-0 flex flex-col overflow-hidden bg-bg sm:bg-transparent sm:border-l border-line z-20"
+    >
+    <div className="w-full sm:w-80 h-full flex flex-col">
+      <div className="h-10 flex items-center justify-between px-4 text-xs uppercase tracking-wider text-mute">
         {panel}
-        <button onClick={onClose} className="p-1 rounded hover:bg-white/10 text-neutral-400">
+        <button onClick={onClose} className="p-1 rounded hover:bg-white/10 text-mute">
           <X size={16} />
         </button>
       </div>
       {panel === "chat" ? <ChatPanel /> : <PeoplePanel />}
-    </aside>
+    </div>
+    </motion.aside>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -415,14 +453,14 @@ function PersonRow({ p }: { p: Participant }) {
   return (
     <li className="px-2 py-1.5 rounded-lg">
       <div className="flex items-center gap-3">
-        <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs text-white ring-2 transition ${speaking ? "ring-emerald-400" : "ring-transparent"}`} style={{ background: hue(label) }}>
+        <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs text-white ring-2 transition ${speaking ? "ring-accent" : "ring-transparent"}`} style={{ background: hue(label) }}>
           {label.slice(0, 1).toUpperCase()}
         </span>
         <span className="flex-1 text-sm truncate">
           {label}
-          {p.isLocal && <span className="text-neutral-500"> (you)</span>}
+          {p.isLocal && <span className="text-mute"> (you)</span>}
         </span>
-        {muted ? <MicOff size={14} className="text-neutral-600" /> : <Mic size={14} className="text-neutral-600" />}
+        {muted ? <MicOff size={14} className="text-dim" /> : <Mic size={14} className="text-dim" />}
       </div>
       {!p.isLocal && (
         <input
@@ -432,7 +470,7 @@ function PersonRow({ p }: { p: Participant }) {
           step={0.05}
           value={v.person[p.identity] ?? 1}
           onChange={(e) => setPerson(p.identity, Number(e.target.value))}
-          className="w-full mt-1.5 accent-blue-500 h-1"
+          className="w-full mt-1.5  h-1"
           title="Volume for this person"
         />
       )}
@@ -458,15 +496,15 @@ function ChatPanel() {
   return (
     <>
       <div className="flex-1 overflow-y-auto px-4 space-y-3 text-sm">
-        {chatMessages.length === 0 && <p className="text-neutral-600 text-xs pt-4">No messages yet.</p>}
+        {chatMessages.length === 0 && <p className="text-dim text-xs pt-4">No messages yet.</p>}
         {chatMessages.map((m) => (
-          <div key={m.id ?? m.timestamp}>
+          <motion.div key={m.id ?? m.timestamp} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
             <div className="flex items-baseline gap-2">
-              <span className="text-neutral-400 text-xs">{m.from?.name || m.from?.identity || "?"}</span>
-              <span className="text-neutral-700 text-[10px]">{new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+              <span className="text-mute text-xs">{m.from?.name || m.from?.identity || "?"}</span>
+              <span className="text-dim text-[10px]">{new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
             </div>
-            <div className="text-neutral-200 break-words select-text">{m.message}</div>
-          </div>
+            <div className="text-ink break-words select-text">{m.message}</div>
+          </motion.div>
         ))}
         <div ref={endRef} />
       </div>
@@ -478,12 +516,12 @@ function ChatPanel() {
         }}
       >
         <input
-          className="flex-1 min-w-0 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm outline-none focus:border-blue-500 transition"
+          className="flex-1 min-w-0 rounded-lg bg-surface border border-line px-3 py-2 text-sm outline-none focus:border-ink/40 transition"
           placeholder="Message"
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
-        <button className="p-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 transition" disabled={isSending || !text.trim()}>
+        <button className="p-2 rounded-lg bg-accent text-bg hover:brightness-110 disabled:opacity-40 transition" disabled={isSending || !text.trim()}>
           <Send size={16} />
         </button>
       </form>
@@ -525,20 +563,22 @@ function SoundboardControl() {
       <Ctl on={open} onClick={() => setOpen((o) => !o)} title="Soundboard">
         <Music size={18} />
       </Ctl>
+      <AnimatePresence>
       {open && (
         <Popover className="w-64">
           <div className="grid grid-cols-2 gap-1 p-1">
             {(Object.keys(SFX) as SfxId[]).map((id) => (
-              <button key={id} className="px-3 py-2 rounded-lg text-sm text-left text-neutral-300 hover:bg-white/10 hover:text-white active:bg-blue-600 transition" onClick={() => play(id)}>
+              <button key={id} className="px-3 py-2 rounded-lg text-sm text-left text-ink/80 hover:bg-white/10 hover:text-white active:bg-accent active:text-bg transition" onClick={() => play(id)}>
                 {SFX[id]}
               </button>
             ))}
           </div>
-          <div className="px-3 py-2 border-t border-white/10">
+          <div className="px-3 py-2 border-t border-line">
             <Slider label="Vol" value={v.sfx} onChange={(x) => set({ sfx: x })} />
           </div>
         </Popover>
       )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -558,7 +598,12 @@ function Controls({ panel, setPanel, onTheater }: { panel: Panel; setPanel: (p: 
 
   return (
     <footer className="shrink-0 flex justify-center px-3 pb-3 pt-1">
-      <div className="flex items-center gap-1.5 rounded-2xl bg-white/[0.05] border border-white/[0.06] p-1.5 shadow-2xl flex-wrap justify-center">
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: "spring", stiffness: 260, damping: 26, delay: 0.1 }}
+        className="flex items-center gap-1.5 rounded-2xl bg-surface border border-line p-1.5 shadow-2xl flex-wrap justify-center backdrop-blur"
+      >
         <Ctl on={mic.enabled} off pending={mic.pending} onClick={() => mic.toggle()} title={mic.enabled ? "Mute" : "Unmute"}>
           {mic.enabled ? <Mic size={18} /> : <MicOff size={18} />}
         </Ctl>
@@ -580,22 +625,35 @@ function Controls({ panel, setPanel, onTheater }: { panel: Panel; setPanel: (p: 
           <Maximize2 size={18} />
         </Ctl>
         <Divider />
-        <button className="h-10 px-3 rounded-xl bg-red-500/90 hover:bg-red-500 text-white flex items-center gap-1.5 text-sm transition" onClick={() => room.disconnect()} title="Leave">
+        <button className="h-10 px-3 rounded-xl bg-warn/90 hover:bg-warn text-white flex items-center gap-1.5 text-sm transition" onClick={() => room.disconnect()} title="Leave">
           <PhoneOff size={16} />
           <span className="hidden sm:inline">Leave</span>
         </button>
-      </div>
+      </motion.div>
     </footer>
   );
 }
 
 function Ctl({ on, off, pending, onClick, title, badge, children }: { on: boolean; off?: boolean; pending?: boolean; onClick: () => void; title: string; badge?: number; children: React.ReactNode }) {
-  const cls = on ? "bg-white/10 text-white" : off ? "bg-red-500/15 text-red-300" : "text-neutral-400 hover:text-white hover:bg-white/5";
+  const cls = on ? "bg-white/10 text-white" : off ? "bg-warn/15 text-warn" : "text-mute hover:text-white hover:bg-white/5";
   return (
-    <button className={`relative h-10 w-10 rounded-xl flex items-center justify-center transition disabled:opacity-50 ${cls}`} onClick={onClick} disabled={pending} title={title}>
+    <motion.button whileTap={{ scale: 0.92 }} className={`relative h-10 w-10 rounded-xl flex items-center justify-center transition disabled:opacity-50 ${cls}`} onClick={onClick} disabled={pending} title={title}>
       {children}
-      {badge ? <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-blue-500 text-[10px] text-white flex items-center justify-center">{badge}</span> : null}
-    </button>
+      <AnimatePresence>
+        {badge ? (
+          <motion.span
+            key="b"
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            exit={{ scale: 0 }}
+            transition={{ type: "spring", stiffness: 500, damping: 25 }}
+            className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-accent text-[10px] text-bg flex items-center justify-center font-medium"
+          >
+            {badge}
+          </motion.span>
+        ) : null}
+      </AnimatePresence>
+    </motion.button>
   );
 }
 
@@ -604,7 +662,18 @@ function Divider() {
 }
 
 function Popover({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`absolute bottom-12 left-1/2 -translate-x-1/2 rounded-xl bg-[#17171a] border border-white/10 shadow-2xl z-30 ${className}`}>{children}</div>;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8, scale: 0.96 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 6, scale: 0.97 }}
+      transition={{ type: "spring", stiffness: 420, damping: 30 }}
+      style={{ transformOrigin: "bottom center", x: "-50%" }}
+      className={`absolute bottom-12 left-1/2 rounded-xl bg-[#171513] border border-line shadow-2xl z-30 ${className}`}
+    >
+      {children}
+    </motion.div>
+  );
 }
 
 function useClickOutside(ref: React.RefObject<HTMLElement | null>, active: boolean, onOutside: () => void) {
@@ -628,14 +697,16 @@ function VolumeControl() {
       <Ctl on={open} onClick={() => setOpen((o) => !o)} title="Volume">
         <Volume2 size={18} />
       </Ctl>
+      <AnimatePresence>
       {open && (
         <Popover className="p-3 space-y-2">
           <Slider label="Movie" value={v.movie} onChange={(x) => set({ movie: x })} />
           <Slider label="Voice" value={v.voice} onChange={(x) => set({ voice: x })} />
           <Slider label="Sounds" value={v.sfx} onChange={(x) => set({ sfx: x })} />
-          <p className="text-[10px] text-neutral-600 pt-1">Per-person volume is in the People panel.</p>
+          <p className="text-[10px] text-dim pt-1">Per-person volume is in the People panel.</p>
         </Popover>
       )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -677,7 +748,7 @@ function ShareControl() {
   return (
     <div ref={ref} className="relative flex">
       <button
-        className={`h-10 pl-3 pr-2 rounded-l-xl flex items-center gap-2 text-sm transition disabled:opacity-50 ${isScreenShareEnabled ? "bg-blue-600 text-white" : "text-neutral-400 hover:text-white hover:bg-white/5"}`}
+        className={`h-10 pl-3 pr-2 rounded-l-xl flex items-center gap-2 text-sm transition disabled:opacity-50 ${isScreenShareEnabled ? "bg-accent text-bg" : "text-mute hover:text-white hover:bg-white/5"}`}
         onClick={() => (isScreenShareEnabled ? stop() : start(mode))}
         disabled={busy}
         title={isScreenShareEnabled ? "Stop sharing" : "Share screen"}
@@ -686,18 +757,19 @@ function ShareControl() {
         <span className="hidden sm:inline">{isScreenShareEnabled ? "Stop" : "Share"}</span>
       </button>
       <button
-        className={`h-10 px-2 rounded-r-xl text-[11px] font-medium border-l border-black/30 transition ${isScreenShareEnabled ? "bg-blue-600 text-blue-100" : "text-neutral-500 hover:text-white hover:bg-white/5"}`}
+        className={`h-10 px-2 rounded-r-xl text-[11px] font-medium border-l border-black/30 transition ${isScreenShareEnabled ? "bg-accent text-bg/70" : "text-mute hover:text-white hover:bg-white/5"}`}
         onClick={() => setOpen((o) => !o)}
         title="Share quality"
       >
         {SHARE_MODES[mode].label}
       </button>
+      <AnimatePresence>
       {open && (
         <Popover className="w-52 p-1">
           {(Object.keys(SHARE_MODES) as ShareMode[]).map((k) => (
             <button
               key={k}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between hover:bg-white/5 ${mode === k ? "text-white" : "text-neutral-400"}`}
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between hover:bg-surface ${mode === k ? "text-white" : "text-mute"}`}
               onClick={() => {
                 setMode(k);
                 setOpen(false);
@@ -706,13 +778,14 @@ function ShareControl() {
             >
               <span>
                 {SHARE_MODES[k].label}
-                <span className="block text-[11px] text-neutral-500">{SHARE_MODES[k].desc}</span>
+                <span className="block text-[11px] text-mute">{SHARE_MODES[k].desc}</span>
               </span>
               {mode === k && <Check size={14} />}
             </button>
           ))}
         </Popover>
       )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -726,12 +799,14 @@ function DevicesControl() {
       <Ctl on={open} onClick={() => setOpen((o) => !o)} title="Audio devices">
         <Settings size={18} />
       </Ctl>
+      <AnimatePresence>
       {open && (
         <Popover className="w-72 py-1">
           <DeviceSelect label="Microphone" kind="audioinput" />
           <DeviceSelect label="Speaker" kind="audiooutput" />
         </Popover>
       )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -740,8 +815,8 @@ function DeviceSelect({ label, kind }: { label: string; kind: "audioinput" | "au
   const d = useMediaDeviceSelect({ kind });
   return (
     <label className="block px-3 py-2">
-      <span className="block text-[11px] uppercase tracking-wider text-neutral-500 mb-1">{label}</span>
-      <select className="w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5 text-sm outline-none focus:border-blue-500" value={d.activeDeviceId} onChange={(e) => d.setActiveMediaDevice(e.target.value)}>
+      <span className="block text-[11px] uppercase tracking-wider text-mute mb-1">{label}</span>
+      <select className="w-full rounded-md bg-surface border border-line px-2 py-1.5 text-sm outline-none focus:border-ink/40" value={d.activeDeviceId} onChange={(e) => d.setActiveMediaDevice(e.target.value)}>
         {d.devices.map((dev) => (
           <option key={dev.deviceId} value={dev.deviceId}>
             {dev.label || dev.deviceId.slice(0, 8)}
@@ -753,5 +828,5 @@ function DeviceSelect({ label, kind }: { label: string; kind: "audioinput" | "au
 }
 
 function Center({ children }: { children: React.ReactNode }) {
-  return <div className="h-dvh flex items-center justify-center bg-[#0b0b0d] text-neutral-400 text-sm">{children}</div>;
+  return <div className="h-dvh flex items-center justify-center bg-bg text-mute text-sm">{children}</div>;
 }
