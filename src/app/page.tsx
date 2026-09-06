@@ -15,6 +15,8 @@ export default function Home() {
   const [cam, setCam] = useState(false);
 
   useEffect(() => {
+    // Browser-only state, read once after mount to avoid a hydration mismatch.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     try {
       setName(localStorage.getItem("rs:name") ?? "");
     } catch {}
@@ -34,7 +36,7 @@ export default function Home() {
   const ready = name.trim().length > 0;
 
   return (
-    <main className="min-h-dvh flex items-center justify-center p-4 bg-[radial-gradient(ellipse_at_top,#1a1a2e_0%,#0a0a0a_60%)] text-neutral-100">
+    <main className="min-h-dvh flex items-center justify-center p-4 bg-[#0b0b0d] text-neutral-100">
       <div className="w-full max-w-sm space-y-5">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">roomshare</h1>
@@ -80,7 +82,7 @@ export default function Home() {
 
         <div className="relative py-1">
           <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10" /></div>
-          <div className="relative flex justify-center text-xs text-neutral-600"><span className="bg-[#0b0b10] px-2">or</span></div>
+          <div className="relative flex justify-center text-xs text-neutral-600"><span className="bg-[#0b0b0d] px-2">or</span></div>
         </div>
 
         <button

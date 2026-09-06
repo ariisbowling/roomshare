@@ -1,92 +1,9 @@
 @import "tailwindcss";
 
-:root {
-  --background: #0a0a0a;
-  --foreground: #ededed;
-}
-
-html, body {
-  background: var(--background);
-  color: var(--foreground);
+html,
+body {
+  background: #0b0b0d;
+  color: #e5e5e5;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   overscroll-behavior: none;
 }
-
-/* ---- room layout ---- */
-.rs-room {
-  --lk-bg: #0a0a0a;
-  --lk-bg2: #141414;
-  --lk-control-bar-height: 64px;
-  height: 100dvh;
-  display: flex;
-  flex-direction: column;
-  position: relative;
-}
-.rs-main {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  position: relative;
-}
-.rs-main > .lk-grid-layout,
-.rs-main > .lk-focus-layout-container {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-}
-.rs-chat {
-  width: 0;
-  overflow: hidden;
-  border-left: 1px solid rgba(255, 255, 255, 0.08);
-  transition: width 0.15s ease;
-  background: var(--lk-bg2);
-}
-.rs-chat.open { width: 320px; }
-.rs-chat .lk-chat { height: 100%; width: 320px; }
-@media (max-width: 720px) {
-  .rs-chat { position: absolute; inset: 0; width: 0; border: 0; }
-  .rs-chat.open { width: 100%; }
-  .rs-chat .lk-chat { width: 100%; }
-}
-
-.rs-bar {
-  height: var(--lk-control-bar-height);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 0 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-  flex-wrap: wrap;
-}
-.rs-bar .lk-control-bar { border: 0; padding: 0; height: auto; gap: 8px; }
-.rs-share { display: flex; gap: 2px; }
-.rs-share .lk-button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.rs-select {
-  border-top-left-radius: 0;
-  border-bottom-left-radius: 0;
-  appearance: none;
-  padding-right: 0.75rem;
-  cursor: pointer;
-}
-@media (max-width: 720px) {
-  .rs-bar { height: auto; padding: 8px; }
-  .rs-bar .lk-button { padding: 0.5rem 0.7rem; font-size: 0.85rem; }
-}
-
-.rs-code {
-  position: absolute;
-  top: 10px;
-  left: 12px;
-  z-index: 10;
-  font-family: ui-monospace, monospace;
-  font-size: 13px;
-  letter-spacing: 0.15em;
-  color: rgba(255, 255, 255, 0.6);
-  background: rgba(0, 0, 0, 0.45);
-  padding: 4px 10px;
-  border-radius: 6px;
-  backdrop-filter: blur(6px);
-  cursor: pointer;
-}
-.rs-code:hover { color: #fff; }
