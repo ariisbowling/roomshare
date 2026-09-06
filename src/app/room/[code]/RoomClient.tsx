@@ -147,7 +147,8 @@ function Shell({ code }: { code: string }) {
   const [panel, setPanel] = useState<Panel>("none");
   const participants = useParticipants();
   const state = useConnectionState();
-  const { quality } = useConnectionQualityIndicator();
+  const { localParticipant } = useLocalParticipant();
+  const { quality } = useConnectionQualityIndicator({ participant: localParticipant });
   const stageRef = useRef<HTMLElement>(null);
   const [theater, setTheater] = useState(false);
 
