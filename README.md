@@ -1,36 +1,28 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# roomshare
 
-## Getting Started
+Low-latency screen share + voice for a few people. Next.js + LiveKit.
 
-First, run the development server:
+## Setup (once)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. Go to https://cloud.livekit.io, sign up (free), create a project.
+2. Settings -> Keys -> create key. Copy the API key, secret, and the wss:// URL.
+3. Put them in `.env.local` (copy of `.env.local.example`).
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Run locally
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+    pnpm dev
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open http://localhost:3000, enter a name, click **Create new room**, send the 6-letter code to the other person.
 
-## Learn More
+## Deploy
 
-To learn more about Next.js, take a look at the following resources:
+    pnpm dlx vercel
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Add the same three env vars in the Vercel project settings.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Quality knobs
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`src/app/room/[code]/RoomClient.tsx`:
+- `SCREEN_BITRATE` (default 20 Mbps) and `SCREEN_FPS` (60)
+- `contentHint: "detail"` for text/code; change to `"motion"` for video playback
+- `videoCodec: "vp9"`; try `"av1"` in Chrome for sharper text at the same bitrate
