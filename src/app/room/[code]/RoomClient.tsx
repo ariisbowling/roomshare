@@ -8,11 +8,13 @@ import {
   type TrackReference,
   useChat,
   useConnectionState,
+  useDataChannel,
   useIsMuted,
   useIsSpeaking,
   useLocalParticipant,
   useMediaDeviceSelect,
   useParticipants,
+  useRemoteParticipants,
   useRoomContext,
   useTrackToggle,
   useTracks,
@@ -28,20 +30,23 @@ import {
   Minimize2,
   MonitorUp,
   MonitorX,
+  Music,
   PhoneOff,
   Send,
   Settings,
   Users,
   Video,
   VideoOff,
+  Volume2,
   X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { SFX, playSfx, type SfxId } from "@/lib/sfx";
 
 // ---- quality settings -------------------------------------------------------
-// "Sharp" for code/text/slides. "Smooth" for movies/games: motion priority and
-// a lower cap, which is still well above what 1440p streaming services use.
+// "Sharp" for code/text/slides. "Smooth" for video/games. "Movie" for films:
+// films are 24 fps, so a 30 fps cap loses nothing and halves the data.
 const SHARE_MODES = {
   sharp: { label: "Sharp", desc: "text & code", hint: "detail" as const, bitrate: 20_000_000, fps: 60 },
   smooth: { label: "Smooth", desc: "video & games", hint: "motion" as const, bitrate: 12_000_000, fps: 60 },
@@ -61,6 +66,34 @@ const roomOptions: RoomOptions = {
     red: true,
   },
 };
+
+type Panel = "none" | "chat" | "people";
+
+// ---- volume state -----------------------------------------------------------
+type Volumes = { voice: number; movie: number; sfx: number; person: Record<string, number> };
+const VolumeCtx = createContext<{ v: Volumes; set: (patch: Partial<Volumes>) => void; setPerson: (id: string, vol: number) => void }>(null!);
+
+function VolumeProvider({ children }: { children: React.ReactNode }) {
+  const [v, setV] = useState<Volumes>({ voice: 1, movie: 1, sfx: 0.7, person: {} });
+  const set = useCallback((patch: Partial<Volumes>) => setV((o) => ({ ...o, ...patch })), []);
+  const setPerson = useCallback((id: string, vol: number) => setV((o) => ({ ...o, person: { ...o.person, [id]: vol } })), []);
+  return <VolumeCtx.Provider value={{ v, set, setPerson }}>{children}</VolumeCtx.Provider>;
+}
+
+/** Applies voice/movie/per-person volumes to every remote audio track. */
+function AudioMixer() {
+  const { v } = useContext(VolumeCtx);
+  const remotes = useRemoteParticipants();
+  // Re-run when audio tracks appear or disappear.
+  const audioTracks = useTracks([Track.Source.Microphone, Track.Source.ScreenShareAudio], { onlySubscribed: true });
+  useEffect(() => {
+    for (const p of remotes) {
+      p.setVolume(v.voice * (v.person[p.identity] ?? 1), Track.Source.Microphone);
+      p.setVolume(v.movie, Track.Source.ScreenShareAudio);
+    }
+  }, [v, remotes, audioTracks.length]);
+  return null;
+}
 
 // ---- root -------------------------------------------------------------------
 export default function RoomClient({ code }: { code: string }) {
@@ -98,39 +131,61 @@ export default function RoomClient({ code }: { code: string }) {
       onDisconnected={() => router.push("/")}
       className="h-dvh flex flex-col bg-[#0b0b0d] text-neutral-200 select-none"
     >
-      <Shell code={code} />
+      <VolumeProvider>
+        <Shell code={code} />
+        <AudioMixer />
+        <SfxReceiver />
+      </VolumeProvider>
       <RoomAudioRenderer />
     </LiveKitRoom>
   );
 }
 
 function Shell({ code }: { code: string }) {
-  const [panel, setPanel] = useState<"none" | "chat" | "people">("none");
+  const [panel, setPanel] = useState<Panel>("none");
   const participants = useParticipants();
   const state = useConnectionState();
+  const stageRef = useRef<HTMLElement>(null);
+  const [theater, setTheater] = useState(false);
+
+  useEffect(() => {
+    const h = () => setTheater(!!document.fullscreenElement && document.fullscreenElement === stageRef.current);
+    document.addEventListener("fullscreenchange", h);
+    return () => document.removeEventListener("fullscreenchange", h);
+  }, []);
+
+  const toggleTheater = useCallback(() => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else stageRef.current?.requestFullscreen().catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if (e.key === "f" && !(e.target instanceof HTMLInputElement)) toggleTheater();
+    };
+    document.addEventListener("keydown", h);
+    return () => document.removeEventListener("keydown", h);
+  }, [toggleTheater]);
 
   return (
     <>
       <header className="h-12 shrink-0 flex items-center justify-between px-3 sm:px-4">
         <CodePill code={code} />
         <div className="flex items-center gap-1.5 text-xs text-neutral-500">
-          <span
-            className={`inline-block w-1.5 h-1.5 rounded-full ${
-              state === ConnectionState.Connected ? "bg-emerald-400" : "bg-amber-400 animate-pulse"
-            }`}
-          />
+          <span className={`inline-block w-1.5 h-1.5 rounded-full ${state === ConnectionState.Connected ? "bg-emerald-400" : "bg-amber-400 animate-pulse"}`} />
           {state === ConnectionState.Connected ? `${participants.length} here` : state}
         </div>
       </header>
 
       <div className="flex-1 flex min-h-0 relative">
-        <main className="flex-1 min-w-0 relative px-3 sm:px-4 pb-2">
-          <Stage />
+        <main ref={stageRef} className={`flex-1 min-w-0 relative ${theater ? "bg-black" : "px-3 sm:px-4 pb-2"}`} onDoubleClick={toggleTheater}>
+          <Stage theater={theater} />
+          {theater && <TheaterOverlay onExit={toggleTheater} />}
         </main>
         <SidePanel panel={panel} onClose={() => setPanel("none")} />
       </div>
 
-      <Controls panel={panel} setPanel={setPanel} />
+      <Controls panel={panel} setPanel={setPanel} onTheater={toggleTheater} />
     </>
   );
 }
@@ -155,7 +210,7 @@ function CodePill({ code }: { code: string }) {
 }
 
 // ---- stage ------------------------------------------------------------------
-function Stage() {
+function Stage({ theater }: { theater: boolean }) {
   const screens = useTracks([{ source: Track.Source.ScreenShare, withPlaceholder: false }], { onlySubscribed: false });
   const cams = useTracks([{ source: Track.Source.Camera, withPlaceholder: false }], { onlySubscribed: false });
   const participants = useParticipants();
@@ -164,13 +219,15 @@ function Stage() {
 
   if (screen) {
     return (
-      <div className="h-full w-full relative rounded-xl overflow-hidden bg-black">
+      <div className={`h-full w-full relative overflow-hidden bg-black ${theater ? "" : "rounded-xl"}`}>
         <VideoTrack trackRef={screen} className="h-full w-full object-contain" />
-        <div className="absolute top-2 left-2 text-xs px-2 py-1 rounded-md bg-black/50 backdrop-blur text-neutral-300">
-          {screen.participant.name || screen.participant.identity}
-          {screen.participant.isLocal ? " (you)" : ""}
-        </div>
-        {camRefs.length > 0 && (
+        {!theater && (
+          <div className="absolute top-2 left-2 text-xs px-2 py-1 rounded-md bg-black/50 backdrop-blur text-neutral-300">
+            {screen.participant.name || screen.participant.identity}
+            {screen.participant.isLocal ? " (you)" : ""}
+          </div>
+        )}
+        {camRefs.length > 0 && !theater && (
           <div className="absolute bottom-2 right-2 flex gap-2">
             {camRefs.map((t) => (
               <div key={t.publication.trackSid} className="w-40 aspect-video rounded-lg overflow-hidden shadow-lg">
@@ -203,7 +260,6 @@ function Stage() {
     );
   }
 
-  // Voice only.
   return (
     <div className="h-full w-full flex flex-wrap items-center justify-center gap-10 sm:gap-14">
       {participants.map((p) => (
@@ -262,8 +318,70 @@ function hue(s: string) {
   return `hsl(${h} 45% 40%)`;
 }
 
+// ---- theater overlay: auto-hides until the mouse moves ----------------------
+function TheaterOverlay({ onExit }: { onExit: () => void }) {
+  const [visible, setVisible] = useState(true);
+  const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const mic = useTrackToggle({ source: Track.Source.Microphone });
+  const { v, set } = useContext(VolumeCtx);
+  const { localParticipant } = useLocalParticipant();
+  const speaking = useIsSpeaking(localParticipant);
+
+  useEffect(() => {
+    const poke = () => {
+      setVisible(true);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => setVisible(false), 2500);
+    };
+    poke();
+    document.addEventListener("mousemove", poke);
+    document.addEventListener("touchstart", poke);
+    return () => {
+      clearTimeout(timer.current);
+      document.removeEventListener("mousemove", poke);
+      document.removeEventListener("touchstart", poke);
+    };
+  }, []);
+
+  return (
+    <div
+      className={`absolute inset-0 transition-opacity duration-300 ${visible ? "opacity-100" : "opacity-0 cursor-none"}`}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      <div className="absolute top-3 right-3 flex items-center gap-2" onDoubleClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-3 rounded-2xl bg-black/60 backdrop-blur border border-white/10 px-3 py-2">
+          <Slider label="Movie" value={v.movie} onChange={(x) => set({ movie: x })} />
+          <Slider label="Voice" value={v.voice} onChange={(x) => set({ voice: x })} />
+        </div>
+        <button
+          className={`h-11 w-11 rounded-2xl backdrop-blur border border-white/10 flex items-center justify-center transition ${
+            mic.enabled ? (speaking ? "bg-emerald-500/80 text-white" : "bg-black/60 text-white") : "bg-red-500/80 text-white"
+          }`}
+          onClick={() => mic.toggle()}
+          disabled={mic.pending}
+          title={mic.enabled ? "Mute" : "Unmute"}
+        >
+          {mic.enabled ? <Mic size={20} /> : <MicOff size={20} />}
+        </button>
+        <button className="h-11 w-11 rounded-2xl bg-black/60 backdrop-blur border border-white/10 flex items-center justify-center text-white" onClick={onExit} title="Exit fullscreen (Esc)">
+          <Minimize2 size={20} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Slider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <label className="flex items-center gap-2 text-xs text-neutral-300">
+      <span className="w-10">{label}</span>
+      <input type="range" min={0} max={1} step={0.02} value={value} onChange={(e) => onChange(Number(e.target.value))} className="w-24 accent-blue-500" />
+    </label>
+  );
+}
+
 // ---- side panel -------------------------------------------------------------
-function SidePanel({ panel, onClose }: { panel: "none" | "chat" | "people"; onClose: () => void }) {
+function SidePanel({ panel, onClose }: { panel: Panel; onClose: () => void }) {
   if (panel === "none") return null;
   return (
     <aside className="absolute inset-0 sm:static sm:w-80 shrink-0 flex flex-col bg-[#0b0b0d] sm:bg-transparent sm:border-l border-white/[0.06] z-20">
@@ -292,20 +410,32 @@ function PeoplePanel() {
 function PersonRow({ p }: { p: Participant }) {
   const speaking = useIsSpeaking(p);
   const muted = useIsMuted({ participant: p, source: Track.Source.Microphone });
+  const { v, setPerson } = useContext(VolumeCtx);
   const label = p.name || p.identity;
   return (
-    <li className="flex items-center gap-3 px-2 py-1.5 rounded-lg">
-      <span
-        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs text-white ring-2 transition ${speaking ? "ring-emerald-400" : "ring-transparent"}`}
-        style={{ background: hue(label) }}
-      >
-        {label.slice(0, 1).toUpperCase()}
-      </span>
-      <span className="flex-1 text-sm truncate">
-        {label}
-        {p.isLocal && <span className="text-neutral-500"> (you)</span>}
-      </span>
-      {muted ? <MicOff size={14} className="text-neutral-600" /> : <Mic size={14} className="text-neutral-600" />}
+    <li className="px-2 py-1.5 rounded-lg">
+      <div className="flex items-center gap-3">
+        <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs text-white ring-2 transition ${speaking ? "ring-emerald-400" : "ring-transparent"}`} style={{ background: hue(label) }}>
+          {label.slice(0, 1).toUpperCase()}
+        </span>
+        <span className="flex-1 text-sm truncate">
+          {label}
+          {p.isLocal && <span className="text-neutral-500"> (you)</span>}
+        </span>
+        {muted ? <MicOff size={14} className="text-neutral-600" /> : <Mic size={14} className="text-neutral-600" />}
+      </div>
+      {!p.isLocal && (
+        <input
+          type="range"
+          min={0}
+          max={2}
+          step={0.05}
+          value={v.person[p.identity] ?? 1}
+          onChange={(e) => setPerson(p.identity, Number(e.target.value))}
+          className="w-full mt-1.5 accent-blue-500 h-1"
+          title="Volume for this person"
+        />
+      )}
     </li>
   );
 }
@@ -314,7 +444,9 @@ function ChatPanel() {
   const { chatMessages, send, isSending } = useChat();
   const [text, setText] = useState("");
   const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => endRef.current?.scrollIntoView({ behavior: "smooth" }), [chatMessages.length]);
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages.length]);
 
   async function submit() {
     const t = text.trim();
@@ -331,9 +463,7 @@ function ChatPanel() {
           <div key={m.id ?? m.timestamp}>
             <div className="flex items-baseline gap-2">
               <span className="text-neutral-400 text-xs">{m.from?.name || m.from?.identity || "?"}</span>
-              <span className="text-neutral-700 text-[10px]">
-                {new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              </span>
+              <span className="text-neutral-700 text-[10px]">{new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
             </div>
             <div className="text-neutral-200 break-words select-text">{m.message}</div>
           </div>
@@ -361,22 +491,74 @@ function ChatPanel() {
   );
 }
 
+// ---- soundboard -------------------------------------------------------------
+const enc = new TextEncoder();
+const dec = new TextDecoder();
+
+function SfxReceiver() {
+  const { v } = useContext(VolumeCtx);
+  const vol = useRef(v.sfx);
+  useEffect(() => {
+    vol.current = v.sfx;
+  }, [v.sfx]);
+  useDataChannel("sfx", (msg) => {
+    const id = dec.decode(msg.payload) as SfxId;
+    if (id in SFX) playSfx(id, vol.current);
+  });
+  return null;
+}
+
+function SoundboardControl() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const { send } = useDataChannel("sfx");
+  const { v, set } = useContext(VolumeCtx);
+  useClickOutside(ref, open, () => setOpen(false));
+
+  function play(id: SfxId) {
+    playSfx(id, v.sfx);
+    send(enc.encode(id), { reliable: true }).catch(() => {});
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <Ctl on={open} onClick={() => setOpen((o) => !o)} title="Soundboard">
+        <Music size={18} />
+      </Ctl>
+      {open && (
+        <Popover className="w-64">
+          <div className="grid grid-cols-2 gap-1 p-1">
+            {(Object.keys(SFX) as SfxId[]).map((id) => (
+              <button key={id} className="px-3 py-2 rounded-lg text-sm text-left text-neutral-300 hover:bg-white/10 hover:text-white active:bg-blue-600 transition" onClick={() => play(id)}>
+                {SFX[id]}
+              </button>
+            ))}
+          </div>
+          <div className="px-3 py-2 border-t border-white/10">
+            <Slider label="Vol" value={v.sfx} onChange={(x) => set({ sfx: x })} />
+          </div>
+        </Popover>
+      )}
+    </div>
+  );
+}
+
 // ---- controls ---------------------------------------------------------------
-function Controls({ panel, setPanel }: { panel: "none" | "chat" | "people"; setPanel: (p: "none" | "chat" | "people") => void }) {
+function Controls({ panel, setPanel, onTheater }: { panel: Panel; setPanel: (p: Panel) => void; onTheater: () => void }) {
   const room = useRoomContext();
   const mic = useTrackToggle({ source: Track.Source.Microphone });
   const cam = useTrackToggle({ source: Track.Source.Camera });
   const { chatMessages } = useChat();
   const [seen, setSeen] = useState(0);
   const unread = panel === "chat" ? 0 : chatMessages.length - seen;
-  function changePanel(next: "none" | "chat" | "people") {
+  function changePanel(next: Panel) {
     if (panel === "chat" || next === "chat") setSeen(chatMessages.length);
     setPanel(next);
   }
 
   return (
     <footer className="shrink-0 flex justify-center px-3 pb-3 pt-1">
-      <div className="flex items-center gap-1.5 rounded-2xl bg-white/[0.05] border border-white/[0.06] p-1.5 shadow-2xl">
+      <div className="flex items-center gap-1.5 rounded-2xl bg-white/[0.05] border border-white/[0.06] p-1.5 shadow-2xl flex-wrap justify-center">
         <Ctl on={mic.enabled} off pending={mic.pending} onClick={() => mic.toggle()} title={mic.enabled ? "Mute" : "Unmute"}>
           {mic.enabled ? <Mic size={18} /> : <MicOff size={18} />}
         </Ctl>
@@ -391,14 +573,14 @@ function Controls({ panel, setPanel }: { panel: "none" | "chat" | "people"; setP
         <Ctl on={panel === "people"} onClick={() => changePanel(panel === "people" ? "none" : "people")} title="People">
           <Users size={18} />
         </Ctl>
-        <FullscreenControl />
+        <VolumeControl />
+        <SoundboardControl />
         <DevicesControl />
+        <Ctl on={false} onClick={onTheater} title="Fullscreen (F)">
+          <Maximize2 size={18} />
+        </Ctl>
         <Divider />
-        <button
-          className="h-10 px-3 rounded-xl bg-red-500/90 hover:bg-red-500 text-white flex items-center gap-1.5 text-sm transition"
-          onClick={() => room.disconnect()}
-          title="Leave"
-        >
+        <button className="h-10 px-3 rounded-xl bg-red-500/90 hover:bg-red-500 text-white flex items-center gap-1.5 text-sm transition" onClick={() => room.disconnect()} title="Leave">
           <PhoneOff size={16} />
           <span className="hidden sm:inline">Leave</span>
         </button>
@@ -407,32 +589,12 @@ function Controls({ panel, setPanel }: { panel: "none" | "chat" | "people"; setP
   );
 }
 
-function Ctl({
-  on,
-  off,
-  pending,
-  onClick,
-  title,
-  badge,
-  children,
-}: {
-  on: boolean;
-  off?: boolean; // style "off" state as a warning (mic muted)
-  pending?: boolean;
-  onClick: () => void;
-  title: string;
-  badge?: number;
-  children: React.ReactNode;
-}) {
+function Ctl({ on, off, pending, onClick, title, badge, children }: { on: boolean; off?: boolean; pending?: boolean; onClick: () => void; title: string; badge?: number; children: React.ReactNode }) {
   const cls = on ? "bg-white/10 text-white" : off ? "bg-red-500/15 text-red-300" : "text-neutral-400 hover:text-white hover:bg-white/5";
   return (
     <button className={`relative h-10 w-10 rounded-xl flex items-center justify-center transition disabled:opacity-50 ${cls}`} onClick={onClick} disabled={pending} title={title}>
       {children}
-      {badge ? (
-        <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-blue-500 text-[10px] text-white flex items-center justify-center">
-          {badge}
-        </span>
-      ) : null}
+      {badge ? <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-blue-500 text-[10px] text-white flex items-center justify-center">{badge}</span> : null}
     </button>
   );
 }
@@ -441,19 +603,50 @@ function Divider() {
   return <span className="w-px h-6 bg-white/10 mx-0.5" />;
 }
 
+function Popover({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`absolute bottom-12 left-1/2 -translate-x-1/2 rounded-xl bg-[#17171a] border border-white/10 shadow-2xl z-30 ${className}`}>{children}</div>;
+}
+
+function useClickOutside(ref: React.RefObject<HTMLElement | null>, active: boolean, onOutside: () => void) {
+  useEffect(() => {
+    if (!active) return;
+    const h = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) onOutside();
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [active, ref, onOutside]);
+}
+
+function VolumeControl() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const { v, set } = useContext(VolumeCtx);
+  useClickOutside(ref, open, () => setOpen(false));
+  return (
+    <div ref={ref} className="relative">
+      <Ctl on={open} onClick={() => setOpen((o) => !o)} title="Volume">
+        <Volume2 size={18} />
+      </Ctl>
+      {open && (
+        <Popover className="p-3 space-y-2">
+          <Slider label="Movie" value={v.movie} onChange={(x) => set({ movie: x })} />
+          <Slider label="Voice" value={v.voice} onChange={(x) => set({ voice: x })} />
+          <Slider label="Sounds" value={v.sfx} onChange={(x) => set({ sfx: x })} />
+          <p className="text-[10px] text-neutral-600 pt-1">Per-person volume is in the People panel.</p>
+        </Popover>
+      )}
+    </div>
+  );
+}
+
 function ShareControl() {
   const { localParticipant, isScreenShareEnabled } = useLocalParticipant();
   const [mode, setMode] = useState<ShareMode>("sharp");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const h = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [open]);
+  useClickOutside(ref, open, () => setOpen(false));
 
   async function start(m: ShareMode) {
     const cfg = SHARE_MODES[m];
@@ -462,18 +655,8 @@ function ShareControl() {
       if (isScreenShareEnabled) await localParticipant.setScreenShareEnabled(false);
       await localParticipant.setScreenShareEnabled(
         true,
-        {
-          contentHint: cfg.hint,
-          resolution: { width: 2560, height: 1440, frameRate: cfg.fps },
-          audio: true,
-          systemAudio: "include",
-          selfBrowserSurface: "exclude",
-        },
-        {
-          videoCodec: "vp9",
-          screenShareEncoding: { maxBitrate: cfg.bitrate, maxFramerate: cfg.fps },
-          screenShareSimulcastLayers: [],
-        },
+        { contentHint: cfg.hint, resolution: { width: 2560, height: 1440, frameRate: cfg.fps }, audio: true, systemAudio: "include", selfBrowserSurface: "exclude" },
+        { videoCodec: "vp9", screenShareEncoding: { maxBitrate: cfg.bitrate, maxFramerate: cfg.fps }, screenShareSimulcastLayers: [] },
       );
     } catch {
       /* picker cancelled */
@@ -494,9 +677,7 @@ function ShareControl() {
   return (
     <div ref={ref} className="relative flex">
       <button
-        className={`h-10 pl-3 pr-2 rounded-l-xl flex items-center gap-2 text-sm transition disabled:opacity-50 ${
-          isScreenShareEnabled ? "bg-blue-600 text-white" : "text-neutral-400 hover:text-white hover:bg-white/5"
-        }`}
+        className={`h-10 pl-3 pr-2 rounded-l-xl flex items-center gap-2 text-sm transition disabled:opacity-50 ${isScreenShareEnabled ? "bg-blue-600 text-white" : "text-neutral-400 hover:text-white hover:bg-white/5"}`}
         onClick={() => (isScreenShareEnabled ? stop() : start(mode))}
         disabled={busy}
         title={isScreenShareEnabled ? "Stop sharing" : "Share screen"}
@@ -505,22 +686,18 @@ function ShareControl() {
         <span className="hidden sm:inline">{isScreenShareEnabled ? "Stop" : "Share"}</span>
       </button>
       <button
-        className={`h-10 px-2 rounded-r-xl text-[11px] font-medium border-l border-black/30 transition ${
-          isScreenShareEnabled ? "bg-blue-600 text-blue-100" : "text-neutral-500 hover:text-white hover:bg-white/5"
-        }`}
+        className={`h-10 px-2 rounded-r-xl text-[11px] font-medium border-l border-black/30 transition ${isScreenShareEnabled ? "bg-blue-600 text-blue-100" : "text-neutral-500 hover:text-white hover:bg-white/5"}`}
         onClick={() => setOpen((o) => !o)}
         title="Share quality"
       >
         {SHARE_MODES[mode].label}
       </button>
       {open && (
-        <div className="absolute bottom-12 left-0 w-52 rounded-xl bg-[#17171a] border border-white/10 shadow-2xl p-1 z-30">
+        <Popover className="w-52 p-1">
           {(Object.keys(SHARE_MODES) as ShareMode[]).map((k) => (
             <button
               key={k}
-              className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between hover:bg-white/5 ${
-                mode === k ? "text-white" : "text-neutral-400"
-              }`}
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm flex items-center justify-between hover:bg-white/5 ${mode === k ? "text-white" : "text-neutral-400"}`}
               onClick={() => {
                 setMode(k);
                 setOpen(false);
@@ -534,7 +711,7 @@ function ShareControl() {
               {mode === k && <Check size={14} />}
             </button>
           ))}
-        </div>
+        </Popover>
       )}
     </div>
   );
@@ -543,24 +720,17 @@ function ShareControl() {
 function DevicesControl() {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const h = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [open]);
-
-
+  useClickOutside(ref, open, () => setOpen(false));
   return (
     <div ref={ref} className="relative">
       <Ctl on={open} onClick={() => setOpen((o) => !o)} title="Audio devices">
         <Settings size={18} />
       </Ctl>
       {open && (
-        <div className="absolute bottom-12 right-0 w-72 rounded-xl bg-[#17171a] border border-white/10 shadow-2xl py-1 z-30">
+        <Popover className="w-72 py-1">
           <DeviceSelect label="Microphone" kind="audioinput" />
           <DeviceSelect label="Speaker" kind="audiooutput" />
-        </div>
+        </Popover>
       )}
     </div>
   );
@@ -571,11 +741,7 @@ function DeviceSelect({ label, kind }: { label: string; kind: "audioinput" | "au
   return (
     <label className="block px-3 py-2">
       <span className="block text-[11px] uppercase tracking-wider text-neutral-500 mb-1">{label}</span>
-      <select
-        className="w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5 text-sm outline-none focus:border-blue-500"
-        value={d.activeDeviceId}
-        onChange={(e) => d.setActiveMediaDevice(e.target.value)}
-      >
+      <select className="w-full rounded-md bg-white/5 border border-white/10 px-2 py-1.5 text-sm outline-none focus:border-blue-500" value={d.activeDeviceId} onChange={(e) => d.setActiveMediaDevice(e.target.value)}>
         {d.devices.map((dev) => (
           <option key={dev.deviceId} value={dev.deviceId}>
             {dev.label || dev.deviceId.slice(0, 8)}
@@ -583,24 +749,6 @@ function DeviceSelect({ label, kind }: { label: string; kind: "audioinput" | "au
         ))}
       </select>
     </label>
-  );
-}
-
-function FullscreenControl() {
-  const [fs, setFs] = useState(false);
-  useEffect(() => {
-    const h = () => setFs(!!document.fullscreenElement);
-    document.addEventListener("fullscreenchange", h);
-    return () => document.removeEventListener("fullscreenchange", h);
-  }, []);
-  return (
-    <Ctl
-      on={false}
-      onClick={() => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen())}
-      title={fs ? "Exit fullscreen" : "Fullscreen"}
-    >
-      {fs ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-    </Ctl>
   );
 }
 
