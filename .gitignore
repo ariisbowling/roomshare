@@ -39,3 +39,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# self-host secrets
+server/livekit.yaml
+server/Caddyfile
+server/.env

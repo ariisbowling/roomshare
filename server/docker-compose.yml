@@ -1,0 +1,31 @@
+# LiveKit self-host: one SFU + Caddy for TLS + DuckDNS updater.
+# Host networking is what LiveKit recommends; it needs real UDP ports.
+services:
+  livekit:
+    image: livekit/livekit-server:latest
+    command: --config /etc/livekit.yaml
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  duckdns:
+    image: lscr.io/linuxserver/duckdns:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - TZ=America/New_York
+      - UPDATE_IP=ipv4
+
+volumes:
+  caddy_data:
+  caddy_config:
