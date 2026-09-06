@@ -7,6 +7,7 @@ import {
   isTrackReference,
   type TrackReference,
   useChat,
+  useConnectionQualityIndicator,
   useConnectionState,
   useDataChannel,
   useIsMuted,
@@ -19,7 +20,7 @@ import {
   useTrackToggle,
   useTracks,
 } from "@livekit/components-react";
-import { AudioPresets, ConnectionState, Participant, RoomOptions, Track } from "livekit-client";
+import { AudioPresets, ConnectionQuality, ConnectionState, Participant, RoomOptions, Track } from "livekit-client";
 import {
   Check,
   Copy,
@@ -49,14 +50,14 @@ import { SFX, playSfx, type SfxId } from "@/lib/sfx";
 // "Sharp" for code/text/slides. "Smooth" for video/games. "Movie" for films:
 // films are 24 fps, so a 30 fps cap loses nothing and halves the data.
 const SHARE_MODES = {
-  sharp: { label: "Sharp", desc: "text & code", hint: "detail" as const, bitrate: 20_000_000, fps: 60 },
-  smooth: { label: "Smooth", desc: "video & games", hint: "motion" as const, bitrate: 12_000_000, fps: 60 },
-  movie: { label: "Movie", desc: "films, saves data", hint: "motion" as const, bitrate: 6_000_000, fps: 30 },
+  sharp: { label: "Sharp", desc: "text & code", hint: "detail" as const, codec: "vp9" as const, w: 2560, h: 1440, fps: 30, bitrate: 15_000_000 },
+  smooth: { label: "Smooth", desc: "video & games", hint: "motion" as const, codec: "h264" as const, w: 1920, h: 1080, fps: 60, bitrate: 12_000_000 },
+  movie: { label: "Movie", desc: "films, saves data", hint: "motion" as const, codec: "h264" as const, w: 1920, h: 1080, fps: 30, bitrate: 6_000_000 },
 };
 type ShareMode = keyof typeof SHARE_MODES;
 
 const roomOptions: RoomOptions = {
-  adaptiveStream: true,
+  adaptiveStream: { pauseVideoInBackground: false },
   dynacast: true,
   publishDefaults: {
     videoCodec: "vp9",
@@ -146,6 +147,7 @@ function Shell({ code }: { code: string }) {
   const [panel, setPanel] = useState<Panel>("none");
   const participants = useParticipants();
   const state = useConnectionState();
+  const { quality } = useConnectionQualityIndicator();
   const stageRef = useRef<HTMLElement>(null);
   const [theater, setTheater] = useState(false);
 
@@ -175,6 +177,11 @@ function Shell({ code }: { code: string }) {
         <div className="flex items-center gap-1.5 text-xs text-mute">
           <span className={`inline-block w-1.5 h-1.5 rounded-full ${state === ConnectionState.Connected ? "bg-accent" : "bg-amber-400 animate-pulse"}`} />
           {state === ConnectionState.Connected ? `${participants.length} here` : state}
+          {state === ConnectionState.Connected && quality !== ConnectionQuality.Unknown && (
+            <span className={`ml-2 ${quality === ConnectionQuality.Poor ? "text-warn" : quality === ConnectionQuality.Good ? "text-mute" : "text-dim"}`} title="Your connection">
+              · {quality === ConnectionQuality.Excellent ? "great link" : quality === ConnectionQuality.Good ? "ok link" : quality === ConnectionQuality.Lost ? "link lost" : "weak link"}
+            </span>
+          )}
         </div>
       </header>
 
@@ -716,19 +723,36 @@ function ShareControl() {
   const [mode, setMode] = useState<ShareMode>("sharp");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   useClickOutside(ref, open, () => setOpen(false));
+  useEffect(() => {
+    if (!hint) return;
+    const t = setTimeout(() => setHint(null), 9000);
+    return () => clearTimeout(t);
+  }, [hint]);
 
   async function start(m: ShareMode) {
     const cfg = SHARE_MODES[m];
     setBusy(true);
+    setHint(null);
     try {
       if (isScreenShareEnabled) await localParticipant.setScreenShareEnabled(false);
-      await localParticipant.setScreenShareEnabled(
+      const pub = await localParticipant.setScreenShareEnabled(
         true,
-        { contentHint: cfg.hint, resolution: { width: 2560, height: 1440, frameRate: cfg.fps }, audio: true, systemAudio: "include", selfBrowserSurface: "exclude" },
-        { videoCodec: "vp9", screenShareEncoding: { maxBitrate: cfg.bitrate, maxFramerate: cfg.fps }, screenShareSimulcastLayers: [] },
+        { contentHint: cfg.hint, resolution: { width: cfg.w, height: cfg.h, frameRate: cfg.fps }, audio: true, systemAudio: "include", selfBrowserSurface: "exclude", surfaceSwitching: "include" },
+        {
+          videoCodec: cfg.codec,
+          screenShareEncoding: { maxBitrate: cfg.bitrate, maxFramerate: cfg.fps },
+          screenShareSimulcastLayers: [],
+          dtx: false,
+          red: false,
+          audioPreset: AudioPresets.musicHighQualityStereo,
+        },
       );
+      if (pub && !localParticipant.getTrackPublication(Track.Source.ScreenShareAudio)) {
+        setHint("No audio captured. Pick \u201cEntire screen\u201d and tick \u201cShare system audio\u201d, or a Chrome tab with \u201cShare tab audio\u201d. Windows never carry audio.");
+      }
     } catch {
       /* picker cancelled */
     } finally {
@@ -747,6 +771,18 @@ function ShareControl() {
 
   return (
     <div ref={ref} className="relative flex">
+      <AnimatePresence>
+        {hint && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 6 }}
+            className="absolute bottom-12 left-0 w-72 rounded-xl bg-[#171513] border border-warn/40 shadow-2xl p-3 text-xs text-ink/90 z-30"
+          >
+            {hint}
+          </motion.div>
+        )}
+      </AnimatePresence>
       <button
         className={`h-10 pl-3 pr-2 rounded-l-xl flex items-center gap-2 text-sm transition disabled:opacity-50 ${isScreenShareEnabled ? "bg-accent text-bg" : "text-mute hover:text-white hover:bg-white/5"}`}
         onClick={() => (isScreenShareEnabled ? stop() : start(mode))}
