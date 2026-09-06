@@ -43,6 +43,7 @@ import { useEffect, useRef, useState } from "react";
 const SHARE_MODES = {
   sharp: { label: "Sharp", desc: "text & code", hint: "detail" as const, bitrate: 20_000_000, fps: 60 },
   smooth: { label: "Smooth", desc: "video & games", hint: "motion" as const, bitrate: 12_000_000, fps: 60 },
+  movie: { label: "Movie", desc: "films, saves data", hint: "motion" as const, bitrate: 6_000_000, fps: 30 },
 };
 type ShareMode = keyof typeof SHARE_MODES;
 
